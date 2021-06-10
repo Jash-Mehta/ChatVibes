@@ -3,6 +3,7 @@ package com.example.chatapp;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
@@ -17,30 +18,32 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.bumptech.glide.Glide;
 import com.example.chatapp.Message;
 import com.example.chatapp.R;
+import com.example.chatapp.databinding.DeleteDialogBinding;
 import com.example.chatapp.databinding.ItemReceiveBinding;
 import com.example.chatapp.databinding.ItemSentBinding;
 import com.github.pgreze.reactions.ReactionPopup;
 import com.github.pgreze.reactions.ReactionsConfig;
 import com.github.pgreze.reactions.ReactionsConfigBuilder;
 import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.database.DataSnapshot;
+import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.ValueEventListener;
 
 import java.util.ArrayList;
+import java.util.Map;
+
+import static android.content.ContentValues.TAG;
 
 public class MessageAdapter extends RecyclerView.Adapter {
     Context context;
     ArrayList<Message> messages;
     final int ITEM_SENT = 1;
     final int ITEM_RECEIVE = 2;
-    DatabaseReference mRef = FirebaseDatabase.getInstance().getReference();
-    int sent;
-    int recive;
     String senderRoom;
     String receiverRoom;
-    ChatActivity chatActivity = new ChatActivity();
     boolean isImageFitToScreen;
-
     public MessageAdapter(Context context, ArrayList<Message> messages, String senderRoom, String receiverRoom) {
         this.context = context;
         this.messages = messages;
@@ -91,12 +94,10 @@ public class MessageAdapter extends RecyclerView.Adapter {
                 SentViewHolder viewHolder = (SentViewHolder) holder;
                 viewHolder.binding.feeling.setImageResource(reaction[pos]);
                 viewHolder.binding.feeling.setVisibility(View.VISIBLE);
-                sent = pos;
             } else {
                 ReceiverViewHolder viewHolder = (ReceiverViewHolder) holder;
                 viewHolder.binding.feeling.setImageResource(reaction[pos]);
                 viewHolder.binding.feeling.setVisibility(View.VISIBLE);
-                recive = pos;
 
 
             }
@@ -118,33 +119,44 @@ public class MessageAdapter extends RecyclerView.Adapter {
 
             return true; // true is closing popup, false is requesting a new selection
         });
-
         if (holder.getClass() == SentViewHolder.class) {
             SentViewHolder viewHolder = (SentViewHolder) holder;
-//            AlertDialog.Builder alertbox = new AlertDialog.Builder(viewHolder.itemView.getContext());
-//            alertbox.setMessage("Send Friend Request And become Friends");
-//            alertbox.setPositiveButton("Send Friend Request", new DialogInterface.OnClickListener() {
-//                @Override
-//                public void onClick(DialogInterface dialog, int which) {
-//                    String sent = FirebaseAuth.getInstance().getUid();
-//                    assert sent != null;
-//                    FirebaseDatabase.getInstance().getReference()
-//                            .child("Friends")
-//                            .child(sent)
-//                            .child("Request")
-//                            .setValue("Friend Request is send");
-//                    FirebaseDatabase.getInstance().getReference()
-//                            .child("Friends")
-//                            .child("Request")
-//                            .setValue("Friend Request is send");
-//                }
-//            })
+//            AlertDialog alertDialog = new AlertDialog.Builder(viewHolder.itemView.getContext())
+//                    .setTitle("Friend Request")
+//                    .setMessage("Start conversation by sending Friend Request")
+//                    .setPositiveButton("Send Friend Request ", new DialogInterface.OnClickListener() {
+//                        @Override
+//                        public void onClick(DialogInterface dialog, int which) {
+//                            FirebaseDatabase.getInstance()
+//                                    .getReference()
+//                                    .child("Friends")
+//                                    .child(senderRoom)
+//                                    .child("Positive")
+//                                    .setValue("Send Friend Request");
+//                            FirebaseDatabase.getInstance()
+//                                    .getReference()
+//                                    .child("Friends")
+//                                    .child(receiverRoom)
+//                                    .child("Positive")
+//                                    .setValue("Accept");
+//                        }
+//                    })
 //                    .setNegativeButton("Cancel Friend Request", new DialogInterface.OnClickListener() {
 //                        @Override
 //                        public void onClick(DialogInterface dialog, int which) {
+//                            FirebaseDatabase.getInstance().getReference()
+//                                    .child("Friends")
+//                                    .child(senderRoom)
+//                                    .child("Negative")
+//                                    .setValue("Cancel Friend Request");
+//                            FirebaseDatabase.getInstance().getReference()
+//                                    .child("Friends")
+//                                    .child(receiverRoom)
+//                                    .child("Negative")
+//                                    .setValue("Decline");
 //                        }
 //                    }).create();
-//            alertbox.show();
+//            alertDialog.show();
             if (message.getMessage().equals("photo")) {
                 if (isImageFitToScreen) {
                     isImageFitToScreen = false;
@@ -184,6 +196,57 @@ public class MessageAdapter extends RecyclerView.Adapter {
                 public boolean onTouch(View v, MotionEvent event) {
                     popup.onTouch(v, event);
 
+
+                    return false;
+                }
+            });
+            viewHolder.itemView.setOnLongClickListener(new View.OnLongClickListener() {
+                @Override
+                public boolean onLongClick(View v) {
+                    View view = LayoutInflater.from(context).inflate(R.layout.delete_dialog, null);
+                    DeleteDialogBinding binding = DeleteDialogBinding.bind(view);
+                    AlertDialog dialog = new AlertDialog.Builder(context)
+                            .setTitle("Delete Message")
+                            .setView(binding.getRoot())
+                            .create();
+                    binding.everyone.setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                            message.setMessage("This message is removed.");
+                            message.setFeeling(-1);
+                            FirebaseDatabase.getInstance().getReference()
+                                    .child("Chats")
+                                    .child(senderRoom)
+                                    .child("messages")
+                                    .child(message.getMessageId()).setValue(message);
+
+                            FirebaseDatabase.getInstance().getReference()
+                                    .child("Chats")
+                                    .child(receiverRoom)
+                                    .child("messages")
+                                    .child(message.getMessageId()).setValue(message);
+                            dialog.dismiss();
+                        }
+                    });
+                    binding.delete.setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                            FirebaseDatabase.getInstance().getReference()
+                                    .child("Chats")
+                                    .child(senderRoom)
+                                    .child("messages")
+                                    .child(message.getMessageId()).setValue(null);
+                            dialog.dismiss();
+                        }
+                    });
+                    binding.cancel.setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                            dialog.dismiss();
+                        }
+                    });
+
+                    dialog.dismiss();
 
                     return false;
                 }
@@ -191,6 +254,30 @@ public class MessageAdapter extends RecyclerView.Adapter {
 
         } else {
             ReceiverViewHolder viewHolder = (ReceiverViewHolder) holder;
+//            FirebaseDatabase.getInstance().getReference().child("Friends").child(receiverRoom).child("Positive").addValueEventListener(new ValueEventListener() {
+//                @Override
+//                public void onDataChange(@NonNull DataSnapshot snapshot) {
+//                    for (DataSnapshot snapshot1 : snapshot.getChildren()) {
+//                        String Accept = snapshot.getValue(String.class);
+//                        AlertDialog alertDialog = new AlertDialog.Builder(viewHolder.itemView.getContext())
+//                                .setTitle("Friend Request")
+//                                .setMessage("Accept the request to start conversation")
+//                                .setPositiveButton(Accept, new DialogInterface.OnClickListener() {
+//                                    @Override
+//                                    public void onClick(DialogInterface dialog, int which) {
+//                                        Toast.makeText(context, "Request is accepted", Toast.LENGTH_SHORT).show();
+//                                    }
+//                                }).create();
+//                        alertDialog.show();
+//                    }
+//
+//                }
+
+//                @Override
+//                public void onCancelled(@NonNull DatabaseError error) {
+//
+//                }
+//            });
             if (message.getMessage().equals("photo")) {
                 viewHolder.binding.image.setVisibility(View.VISIBLE);
                 viewHolder.binding.message.setVisibility(View.GONE);
@@ -230,6 +317,59 @@ public class MessageAdapter extends RecyclerView.Adapter {
                     return false;
                 }
             });
+            viewHolder.itemView.setOnLongClickListener(new View.OnLongClickListener() {
+                @Override
+                public boolean onLongClick(View v) {
+                    View view = LayoutInflater.from(context).inflate(R.layout.delete_dialog, null);
+                    DeleteDialogBinding binding = DeleteDialogBinding.bind(view);
+                    AlertDialog dialog = new AlertDialog.Builder(context)
+                            .setTitle("Delete Message")
+                            .setView(binding.getRoot())
+                            .create();
+                    binding.everyone.setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                            message.setMessage("This message is removed.");
+                            message.setFeeling(-1);
+                            FirebaseDatabase.getInstance().getReference()
+                                    .child("Chats")
+                                    .child(senderRoom)
+                                    .child("messages")
+                                    .child(message.getMessageId()).setValue(message);
+
+                            FirebaseDatabase.getInstance().getReference()
+                                    .child("chats")
+                                    .child(receiverRoom)
+                                    .child("messages")
+                                    .child(message.getMessageId()).setValue(message);
+                            dialog.dismiss();
+                        }
+                    });
+                    binding.delete.setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                            FirebaseDatabase.getInstance().getReference()
+                                    .child("Chats")
+                                    .child(senderRoom)
+                                    .child("messages")
+                                    .child(message.getMessageId()).setValue(null);
+                            dialog.dismiss();
+                        }
+                    });
+                    binding.cancel.setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                            dialog.dismiss();
+                        }
+                    });
+
+                    dialog.show();
+
+                    return false;
+                }
+            });
+
+
         }
     }
 

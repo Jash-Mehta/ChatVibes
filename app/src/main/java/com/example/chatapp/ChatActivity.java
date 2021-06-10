@@ -56,21 +56,33 @@ public class ChatActivity extends AppCompatActivity {
         binding = ActivityChatBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
         setSupportActionBar(binding.toolbar);
-        messages = new ArrayList<>();
+
+
         database = FirebaseDatabase.getInstance();
-        adapter = new MessageAdapter(this, messages, senderRoom, receiverRoom);
-        String name = getIntent().getStringExtra("name");
-        String profile = getIntent().getStringExtra("image");
-        receiveruid = getIntent().getStringExtra("uid");
-        binding.recyclerView.setLayoutManager(new LinearLayoutManager(this));
-        binding.recyclerView.setAdapter(adapter);
         storage = FirebaseStorage.getInstance();
+
         dialog = new ProgressDialog(this);
         dialog.setMessage("Uploading image......");
         dialog.setCancelable(false);
-//
 
+
+        messages = new ArrayList<>();
+
+
+        String name = getIntent().getStringExtra("name");
+        String profile = getIntent().getStringExtra("image");
+
+
+        binding.name.setText(name);
+        Glide.with(ChatActivity.this)
+                .load(profile)
+                .placeholder(R.drawable.avatar)
+                .into(binding.profileimg);
+
+        receiveruid = getIntent().getStringExtra("uid");
         senderuid = FirebaseAuth.getInstance().getUid();
+
+
         database.getReference().child("presence").child(receiveruid).addValueEventListener(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
@@ -92,11 +104,12 @@ public class ChatActivity extends AppCompatActivity {
 
             }
         });
-        binding.name.setText(name);
-        Glide.with(ChatActivity.this).load(profile).placeholder(R.drawable.avatar).into(binding.profileimg);
 
         senderRoom = senderuid + receiveruid;
         receiverRoom = receiveruid + senderuid;
+        adapter = new MessageAdapter(this, messages, senderRoom, receiverRoom);
+        binding.recyclerView.setLayoutManager(new LinearLayoutManager(this));
+        binding.recyclerView.setAdapter(adapter);
 
         database.getReference().child("Chats")
                 .child(senderRoom)
